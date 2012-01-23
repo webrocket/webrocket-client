@@ -6,6 +6,9 @@ scenario("WebRocket - Normal Usage", {
   '': function(g) {
     var webrocket = new WebRocket("ws://localhost:8080/test");
     g.assertEqual(webrocket.channels, []);
-    webrocket.subscribe('')
+    g.setTimeout(function() {
+      var channel = webrocket.subscribe('prueba');
+      console.log(channel.state);
+    }, 1000);
   }
 });

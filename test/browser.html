@@ -3,8 +3,150 @@
   <head>
     <meta charset="UTF-8">
     <title>Browser Testing!</title>
+   <style type="text/css">
+      li { list-style-type: none }
+      .error { color: red; }
+      .ok { color: green; }
+    </style>
   </head>
-  <body>
-  <script type="text/javascript" src='../lib/webrocket.js'></script>
+  <body onload="run()">
+    <div id="results"></div>
+    <script type="text/javascript" src='../lib/webrocket.js'></script>
+    <script type="text/javascript" src='gerbil.js'></script>
+    <script type="text/javascript">
+    function run() {
+     var results = document.querySelector("#results");
+        var ul = false;
+        var pre = document.createElement("pre");
+        var prettyPrint = {
+          ok: function(msg) {
+            var li = document.createElement("li");
+            li.className = "ok"
+
+            var content = pre.cloneNode();
+            content.textContent = msg;
+
+            li.appendChild(content);
+            ul.appendChild(li);
+          },
+          pending: function(msg) {
+            var li = document.createElement("li");
+            li.className = "pending"
+
+            var content = pre.cloneNode();
+            content.textContent = msg;
+
+            li.appendChild(content);
+            ul.appendChild(li);
+         },
+          fail: function(msg) {
+            var li = document.createElement("li");
+            li.className = "error"
+
+            var content = pre.cloneNode();
+            content.textContent = msg;
+
+            li.appendChild(content);
+            ul.appendChild(li);
+         },
+          scenario: function(msg) {
+            var h1 = document.createElement("h1");
+            ul = document.createElement("ul");
+
+            h1.textContent = msg;
+            results.appendChild(h1);
+            results.appendChild(ul);
+          },
+          summary: function(msg) {
+            var h2 = document.createElement("h2");
+            h2.textContent = msg;
+            results.appendChild(h2);
+          },
+        };
+
+      Gerbil.formatter = prettyPrint;
+
+      scenario("WebRocket - initial states", {
+        'connection should switch states': function(g) {
+          var wr = new WebRocket('ws://localhost:8080/test');
+          g.assertEqual(wr.connection.state, 'disconnected');
+          g.setTimeout(function() {
+            g.assertEqual(wr.connection.state, 'connected');
+          }, 1000);
+          wr.close();
+        }
+      });
+
+      scenario('WebRocket - Channels', {
+
+        'server events': function(g) {
+          var wr = new WebRocket('ws://localhost:8080/test');
+          g.async(function() {
+            wr.connection.bind(':connected', function() {
+              var channel = wr.subscribe('prueba');
+
+              channel.bind(':subscribed', function(data) {
+                g.assert(true);
+
+                channel.bind(':unsubscribed', function() {
+                  g.assert(true)
+                  g.end();
+                  });
+
+                channel.unsubscribe();
+                });
+              });
+            });
+          },
+
+        'data broadcasting': function(g) {
+          var wr = new WebRocket('ws://localhost:8080/test');
+          g.async(function() {
+            wr.connection.bind(':connected', function() {
+              var channel = wr.subscribe('prueba');
+              var sendData = {content: 'test'};
+
+              channel.bind('broadcastEvent', function(data) {
+                var sid = data.sid;
+                delete data.sid;
+
+                g.assertEqual(sid, wr.connection.sid);
+                g.assertEqual(data, sendData);
+                g.end();
+              });
+
+              channel.broadcast('broadcastEvent', sendData);
+            });
+          });
+        },
+
+        'two clients': function(g) {
+          var client1 = new WebRocket('ws://localhost:8080/test');
+          var client2 = new WebRocket('ws://localhost:8080/test');
+
+          g.async(function() {
+
+            client2.connection.bind(':connected', function() {
+              var channel = client2.subscribe('prueba');
+              channel.bind(":subscribed", function() {
+                channel.bind('interClient', function(data) {
+                  g.assertEqual(data.sid, client1.connection.sid);
+                  g.end();
+                });
+              });
+            });
+
+            client1.connection.bind(':connected', function() {
+              var channel = client1.subscribe('prueba');
+              channel.bind(":subscribed", function() {
+                channel.broadcast('interClient');
+              });
+            });
+
+          });
+        }
+      });
+    }
+    </script>
   </body>
  </html>
