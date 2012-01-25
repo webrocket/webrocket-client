@@ -89,7 +89,7 @@
                 g.assert(true);
 
                 channel.bind(':unsubscribed', function() {
-                  g.assert(true)
+                  g.assert(true);
                   g.end();
                   });
 
@@ -128,18 +128,66 @@
 
             client2.connection.bind(':connected', function() {
               var channel = client2.subscribe('prueba');
-              channel.bind(":subscribed", function() {
-                channel.bind('interClient', function(data) {
-                  g.assertEqual(data.sid, client1.connection.sid);
-                  g.end();
-                });
+
+              channel.bind('interClient', function(data) {
+                g.assertEqual(data.sid, client1.connection.sid);
+                g.assert(data.sid !== client2.connection.sid);
+                g.end();
               });
+
             });
 
             client1.connection.bind(':connected', function() {
               var channel = client1.subscribe('prueba');
               channel.bind(":subscribed", function() {
                 channel.broadcast('interClient');
+              });
+            });
+
+          });
+        }
+      });
+
+      scenario('WebRocket - Presence channels', {
+        'connect to a presence channel': function(g) {
+          var getSAT = function() {
+            var ajax = new XMLHttpRequest;
+            var sat = false;
+
+            ajax.open('GET', '/sat', false);
+            ajax.onreadystatechange = function() {
+              if(ajax.readyState === 4) {
+                sat = ajax.responseText;
+                g.assert(sat.length === 128);
+              }
+            };
+            ajax.send(null);
+            return sat;
+          };
+
+          g.async(function() {
+            var c1 = new WebRocket('ws://localhost:8080/test');
+            var c2 = new WebRocket('ws://localhost:8080/test');
+
+            var sat1 = getSAT();
+            var sat2 = getSAT();
+
+            c2.connection.bind(":connected", function() {
+              c2.connection.authenticate(sat2);
+              c2.subscribe('presence-prueba');
+            });
+
+            c1.connection.bind(":connected", function() {
+              c1.connection.authenticate(sat1);
+              var channel = c1.subscribe('presence-prueba');
+
+              channel.bind(":subscribed", function() {
+                channel.trigger('systemReady');
+              });
+
+              channel.bind('systemReady', function() {
+                g.assertEqual(channel.subscribers.length, 1);
+                g.end();
               });
             });
 
